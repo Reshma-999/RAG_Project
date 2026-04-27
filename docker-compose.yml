@@ -1,0 +1,44 @@
+version: "3.9"
+
+services:
+  # ── Redis Stack (RediSearch + RedisJSON for semantic caching) ──────────────
+  redis:
+    image: redis/redis-stack:latest
+    container_name: rag_redis
+    ports:
+      - "6379:6379"
+      - "8001:8001"   # RedisInsight GUI
+    volumes:
+      - redis_data:/data
+    environment:
+      - REDIS_ARGS=--requirepass ${REDIS_PASSWORD:-}
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # ── RAG API ────────────────────────────────────────────────────────────────
+  api:
+    build: .
+    container_name: rag_api
+    ports:
+      - "${API_PORT:-8000}:8000"
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
+      - CHROMA_PERSIST_DIR=/app/data/chroma_db
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    command: python main.py serve
+
+volumes:
+  redis_data:
